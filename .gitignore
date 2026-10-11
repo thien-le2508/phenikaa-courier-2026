@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+delivery_public/
+work/cache_*.pkl
+work/ml2/
+work/nlp/
+work/policy_features_*.pkl
+work/paths_*.pkl
+# trọng số tải từ GitHub Release (scripts/download_weights.sh)
+work/*.pt
+work/*.pkl
+work/old/
