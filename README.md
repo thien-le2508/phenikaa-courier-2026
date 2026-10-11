@@ -75,7 +75,7 @@ export PYTHONIOENCODING=utf-8 HF_HUB_OFFLINE=1 COURIER_DATA=/đường/dẫn/del
 bash scripts/run_v3_train.sh      # crops_v3.pt (10 epoch) rồi heat_v3.pt (8 epoch)
 bash scripts/run_v3b.sh           # crops_v3b.pt (8 epoch, tăng cường ảnh mạnh)
 
-# NLP: sinh dữ liệu tổng hợp rồi huấn luyện
+# NLP: sinh dữ liệu tổng hợp rồi huấn luyện (chi tiết ở mục 5.1)
 python -m courier.nlp.generate --n 120000 --out work/nlp/synth_holdout.json --seed 1                 # bản trung thực
 python scripts/train_nlp.py --synth work/nlp/synth_holdout.json --real train --epochs 1.5 --max-minutes 45 --out work/nlp_v3_holdout.pt
 python -m courier.nlp.generate --n 150000 --out work/nlp/synth_full.json --use-val --seed 3          # bản nộp
@@ -86,6 +86,42 @@ python scripts/policy_research.py         # work/policy_features_v1.pkl
 python scripts/policy_v2_experiment.py    # work/policy_features_v2.pkl
 python scripts/train_policy_best.py       # bộ phân loại kiểu vẽ (work/policy_best.pkl)
 python scripts/train_policy_v2_final.py   # work/policy_v2_final.pkl
+```
+
+### 5.1 Dữ liệu tổng hợp cho NLP
+
+Phần lớn dữ liệu huấn luyện NLP là **câu tổng hợp do đội tự sinh**, trộn với câu thật của BTC:
+
+| Model | Câu tổng hợp | Câu thật | Mục đích |
+|---|---|---|---|
+| `nlp_v3_holdout.pt` | 120.000 câu, **không** chứa cách diễn đạt lấy từ validation | 2.000 câu train, lặp ×4 | đo trung thực trên validation |
+| `nlp_v3_final.pt` (bản nộp) | 150.000 câu, có thêm cách diễn đạt lấy từ validation | 2.300 câu train + validation, lặp ×4 | dự đoán test |
+
+**Cách sinh** (`courier/nlp/generate.py`, kho cụm từ `courier/nlp/lexicon.py` và `lexicon3.py`): mỗi câu được ghép từ các khung câu
+có nhãn đầy đủ (nơi giao, điểm ghé, tham chiếu, gấp, dễ vỡ):
+
+- **Khung nội dung:** nơi giao (gọi tên, tên khác, hoặc qua người nhận), điểm ghé ở 48% số câu (nhắc trước hoặc sau nơi giao),
+  câu gây nhiễu ("đừng nhầm với X", "không cần ghé X", "người nhận đã rời X rồi", "hôm qua đã giao ở X rồi"),
+  đính chính ở 36% ("Lúc nãy nhắn nhầm là X. Đúng ra: …", "Hủy đơn giao X. Thay vào đó: …"),
+  đối chiếu ở 20% ("không phải X mà là Y", "Y chứ không phải X").
+- **Tham chiếu nơi giao:** 36% không có; 24% `anchor_near` ("nơi cạnh thư viện nhất"); 20% `*_most` ("chỗ ở trên cùng bản đồ");
+  20% tham chiếu theo loại (bắc / nam / tây / đông, gần / xa một mốc). Nơi giao mô tả qua bản đồ có 30% câu nêu người nhận,
+  qua đó lộ ra loại địa điểm.
+- **Gấp / dễ vỡ:** câu khẳng định, phủ định, mệnh lệnh phủ định, nhượng bộ ("mai giao cũng kịp"), hậu quả ("rơi là vỡ").
+  Mỗi từ khóa xuất hiện ở cả hai phía nhãn để model không học tắt theo từ khóa.
+- **Nhiễu:** viết thường, bỏ dấu toàn bộ hoặc một phần, lỗi gõ ở mức ký tự, viết tắt, bỏ dấu câu
+  (train thật có 29% câu không dấu, 20% câu viết thường).
+- **Nguồn cụm từ** chia 3 nhóm: `train` (lấy từ train), `new` (đội tự viết từ tiếng Việt thông dụng),
+  `val` (lấy từ validation, chỉ bật bằng `--use-val` cho bản nộp). Nhờ đó model holdout được đo trung thực trên validation.
+- **Không dùng bất kỳ câu nào của test.**
+
+**Tái lập:**
+
+```bash
+# Bộ của bản nộp: sinh lại GIỐNG HỆT file đã dùng (đã kiểm tra 150.000/150.000 câu trùng khớp)
+python -m courier.nlp.generate --n 150000 --out work/nlp/synth_full.json --use-val --seed 3
+# Bộ của bản holdout: sinh bằng phiên bản generator cũ hơn, nên lệnh dưới cho bộ TƯƠNG ĐƯƠNG chứ không trùng từng câu
+python -m courier.nlp.generate --n 120000 --out work/nlp/synth_holdout.json --seed 1
 ```
 
 Huấn luyện trên GPU không hoàn toàn tất định. Để tái lập đúng từng dòng dự đoán, hãy dùng các trọng số trong `work/`.
